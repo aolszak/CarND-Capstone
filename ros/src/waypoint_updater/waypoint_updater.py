@@ -5,6 +5,8 @@ from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
 
 import math
+import tf
+from std_msgs.msg import Int32
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -21,7 +23,7 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 400 # Number of waypoints we will publish. You can change this number
 
 
 class WaypointUpdater(object):
@@ -31,22 +33,27 @@ class WaypointUpdater(object):
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
-        # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
+        # Subscribers for /traffic_waypoint and /obstacle_waypoint added
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
+        rospy.Subscriber('/obstacle_waypoint', Int32, self.obstacle_cb)
 
-
+        # Publish final waypoints
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
-        # TODO: Add other member variables you need below
+        # Variables
+        self.pose = None
+        self.waypoints = None
+
+        # Loop
+        self.loop()
 
         rospy.spin()
 
     def pose_cb(self, msg):
-        # TODO: Implement
-        pass
+        self.pose = msg
 
     def waypoints_cb(self, waypoints):
-        # TODO: Implement
-        pass
+        self.waypoints = waypoints
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
@@ -69,6 +76,51 @@ class WaypointUpdater(object):
             dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
             wp1 = i
         return dist
+
+    def loop(self):
+        rate = rospy.Rate(10)
+        while not rospy.is_shutdown():
+            self.publish_final_waypoints()
+            rate.sleep()
+        
+    def publish_final_waypoints(self):
+        if self.waypoints != None and self.pose != None:
+
+            time = rospy.Time().now()
+            current_position = self.pose.pose.position
+            waypoints = self.waypoints.waypoints
+            velocity = 20
+
+            # Find nearest waypoint
+            closest_waypoint_index = None
+            closest_waypoint_distance = float('inf')
+            for i in range(len(waypoints)):
+                waypoint_position = waypoints[i].pose.pose.position
+                distance = math.sqrt((current_position.x-waypoint_position.x)**2 + (current_position.y-waypoint_position.y)**2 + (current_position.z-waypoint_position.z)**2)
+                if distance < closest_waypoint_distance:
+                    closest_waypoint_index = i
+                    closest_waypoint_distance = distance
+
+            # Increase waypoint index if it's behind current position
+            delta_py = waypoints[closest_waypoint_index].pose.pose.position.y - current_position.y
+            delta_px = waypoints[closest_waypoint_index].pose.pose.position.y - current_position.x
+            heading  = math.atan2(delta_py, delta_px)
+            euler_angles_xyz = tf.transformations.euler_from_quaternion([self.pose.pose.orientation.x, self.pose.pose.orientation.y, self.pose.pose.orientation.z, self.pose.pose.orientation.w])
+            theta = euler_angles_xyz[-1]
+            angle = math.fabs(theta-heading)
+            if angle > math.pi/4:
+                closest_waypoint_index += 1
+
+            # Publish lane
+            lane = Lane()
+            lane.header.stamp = time
+            lane.header.frame_id = '/world'
+            for i in range(closest_waypoint_index, closest_waypoint_index + LOOKAHEAD_WPS):
+                index = i % len(waypoints)
+                waypoint = waypoints[index]
+                waypoint.twist.twist.linear.x = velocity
+                lane.waypoints.append(waypoint)
+            self.final_waypoints_pub.publish(lane)
 
 
 if __name__ == '__main__':
