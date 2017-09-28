@@ -7,6 +7,7 @@ from styx_msgs.msg import Lane
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from light_classification.tl_classifier import TLClassifier
+from light_classification.tl_classifier import TLClassifierCV
 import tf
 import cv2
 import yaml
@@ -66,11 +67,11 @@ class TLDetector(object):
             t.cancel()
 
         print("Loading light classifier")
-        t = threading.Timer(5.0, light_warm_up_guard)
+        t = threading.Timer(1.0, light_warm_up_guard)
         t.daemon = True
         t.start()
 
-        self.light_classifier = TLClassifier()
+        self.light_classifier = TLClassifierCV()
         
         # Deep net traffic light publisher (output of neural network)
         self.pub1_deep_net_out = rospy.Publisher('/deep_net_out', Image, queue_size=1)
@@ -122,25 +123,30 @@ class TLDetector(object):
         return 0
 
     def process_and_publish(self, timer):
-        light_wp, state = self.process_traffic_lights()
+        if self.has_image:
+            
+            light_wp, state = self.process_traffic_lights()
 
-        '''
-        Publish upcoming red lights at camera frequency.
-        Each predicted state has to occur `STATE_COUNT_THRESHOLD` number
-        of times till we start using it. Otherwise the previous stable state is
-        used.
-        '''
-        if self.state != state:
-            self.state_count = 0
-            self.state = state
-        elif self.state_count >= STATE_COUNT_THRESHOLD:
-            self.last_state = self.state
-            light_wp = light_wp if state == TrafficLight.RED else -1
-            self.last_wp = light_wp
-            self.upcoming_red_light_pub.publish(Int32(light_wp))
+            '''
+            Publish upcoming red lights at camera frequency.
+            Each predicted state has to occur `STATE_COUNT_THRESHOLD` number
+            of times till we start using it. Otherwise the previous stable state is
+            used.
+            '''
+            if self.state != state:
+                self.state_count = 0
+                self.state = state
+            elif self.state_count >= STATE_COUNT_THRESHOLD:
+                self.last_state = self.state
+                light_wp = light_wp if state == TrafficLight.RED else -1
+                self.last_wp = light_wp
+                self.upcoming_red_light_pub.publish(Int32(light_wp))
+            else:
+                self.upcoming_red_light_pub.publish(Int32(self.last_wp))
+            self.state_count += 1
+
         else:
-            self.upcoming_red_light_pub.publish(Int32(self.last_wp))
-        self.state_count += 1
+            time.sleep(1)
 
         # Recursive loop
         rospy.Timer(rospy.Duration(0.2), self.process_and_publish, True)
@@ -155,28 +161,20 @@ class TLDetector(object):
 
         """
 
-        if (not self.has_image):
-            time.sleep(1)
-            return -1, False
-
         print("Image process start...")
 
         state = TrafficLight.UNKNOWN   # Default state        
 
         self.camera_image.encoding = "rgb8"
         cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
-        cv2.imwrite("/home/student/Desktop/Assets/test.jpg", cv_image) # debug
-
-        # cv_image = self.bridge.imgmsg_to_cv2(self.camera_image, "rgb8")
+        # print(cv_image.shape)
+        cv2.imwrite("./../../../asset/test.jpg", cv_image) # debug
 
         if self.light_classifier_is_ready is True:
 
             state = self.light_classifier.get_classification(cv_image)
-            state_name = self.light_classifier.get_light_name(state)
+            state_name = self.get_light_name(state)
             print("Current light: {} {}".format(state, state_name))
-
-            self.pub1_deep_net_out.publish(self.bridge.cv2_to_imgmsg(
-                    self.light_classifier.image_np_deep, "rgb8"))
 
         if(self.pose):
             car_position = self.get_closest_waypoint(self.pose.pose)
@@ -184,6 +182,16 @@ class TLDetector(object):
         self.TrafficLightState.publish(Int32(state))
 
         return -1, state
+
+    def get_light_name(self, index):
+        name = "Unknown"
+        if index == TrafficLight.RED:
+            name = "RED"
+        elif index == TrafficLight.GREEN:
+            name = "GREEN"
+        elif index == TrafficLight.YELLOW:
+            name = "YELLOW"
+        return name
 
 
 if __name__ == '__main__':

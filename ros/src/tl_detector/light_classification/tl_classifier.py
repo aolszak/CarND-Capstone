@@ -7,6 +7,27 @@ import tensorflow as tf
 from collections import defaultdict
 from io import StringIO
 import time
+import cv2
+
+class TLClassifierCV(object):
+    def get_classification(self, image):
+        
+        # Initial state
+        state = TrafficLight.UNKNOWN
+
+        # Match pixel area
+        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        mask_image = cv2.inRange(hsv_image, np.array([150, 100, 150]), np.array([180, 255, 255]))
+        extracted_image = cv2.bitwise_and(image, image, mask=mask_image)
+        area = cv2.countNonZero(mask_image)
+
+        # Check threshold
+        pixels = 40
+        if area > pixels:
+            state = TrafficLight.RED
+
+        # Return traffic light state - only UNKNOWN / RED
+        return state
 
 class TLClassifier(object):
     def __init__(self):
@@ -19,9 +40,9 @@ class TLClassifier(object):
         self.simulation = True  # Set to false for real  (sim one somehow works sorta for real too it's spooky)
         self.faster = True  # 10 for faster run time or anything else for larger network.
 
-        CKPT = cwd+"/../../../../../Assets/ssd1000_bosch.pb"
+        CKPT = cwd+"/../../../../asset/resnet_sim10r.pb"
 
-        PATH_TO_LABELS = cwd+'/../../../../../Assets/label_map.pbtxt'
+        PATH_TO_LABELS = cwd+'/../../../../asset/label_map.pbtxt'
         NUM_CLASSES = 14
 
         self.category_index = {
@@ -105,16 +126,16 @@ class TLClassifier(object):
                     class_name = self.category_index[class_index]
                     # class_id = self.category_index[classes[i]]['id']  # if needed
 
-                    print('TrafficLight class index {}'.format(class_index))
+                    print('TrafficLight class {} {}'.format(class_index, class_name))
 
                     # Traffic light thing
                     self.current_light = TrafficLight.UNKNOWN
 
-                    if class_name == 'Red':
+                    if class_index == 2 or class_index == 5 or class_index == 6 or class_index == 9 or class_index == 13 or class_index == 14:
                         self.current_light = TrafficLight.RED
-                    elif class_name == 'Green':
+                    elif class_index == 1 or class_index == 3 or class_index == 4 or class_index == 10 or class_index == 11 or class_index == 12 or class_index == 8:
                         self.current_light = TrafficLight.GREEN
-                    elif class_name == 'Yellow':
+                    elif class_index == 7:
                         self.current_light = TrafficLight.YELLOW
 
                     fx =  1345.200806
@@ -133,9 +154,3 @@ class TLClassifier(object):
         self.image_np_deep = image
 
         return self.current_light
-
-    def get_light_name(self, index):
-        name = "No lights"
-        if index in self.category_index:
-            name = self.category_index[index]
-        return name
