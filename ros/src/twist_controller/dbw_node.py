@@ -69,14 +69,14 @@ class DBWNode(object):
         rate = rospy.Rate(10) # Changed from 50Hz to 10Hz because of memory load?
         while not rospy.is_shutdown():
             if self.twist_cmd != None and self.current_velocity != None and self.dbw_enabled:
-                print("twist_cmd: {} ****** current_velocity: {} ******** dbw_enabled: {} |||||".format(self.twist_cmd, self.current_velocity, self.dbw_enabled))
+                # print("twist_cmd: {} ****** current_velocity: {} ******** dbw_enabled: {} |||||".format(self.twist_cmd, self.current_velocity, self.dbw_enabled))
                 throttle, brake, steer = self.controller.control(self.dbw_enabled, self.twist_cmd, self.current_velocity)
                 self.publish(throttle, brake, steer)
 
             rate.sleep()
 
     def publish(self, throttle, brake, steer):
-        print("throttle: {}, brake: {}, steer: {}".format(throttle, brake, steer))
+        # print("throttle: {}, brake: {}, steer: {}".format(throttle, brake, steer))
         tcmd = ThrottleCmd()
         tcmd.enable = True
         tcmd.pedal_cmd_type = ThrottleCmd.CMD_PERCENT
